@@ -58,6 +58,7 @@ static void usage(void)
     fprintf(stderr, "  -s <file> Memory map file as shared memory\n");
     fprintf(stderr, "  -i <file> Named pipe to receive interrupts. Pipe must already be created.\n");
     fprintf(stderr, "  -o <file> Named pipe to send interrupts. Pipe must already be created\n");
+    fprintf(stderr, "  -a Enable random thread scheduling (slower)");
 }
 
 static uint32_t parse_num_arg(const char *argval)
@@ -138,6 +139,7 @@ int main(int argc, char *argv[])
     uint32_t memory_size = 0x1000000;
     const char *shared_memory_file = NULL;
     struct stat st;
+    bool random_thread_sched = false;
 
     enum
     {
@@ -146,7 +148,7 @@ int main(int argc, char *argv[])
         MODE_GDB_REMOTE_DEBUG
     } mode = MODE_NORMAL;
 
-    while ((option = getopt(argc, argv, "f:d:vm:b:t:p:c:r:s:i:o:")) != -1)
+    while ((option = getopt(argc, argv, "f:d:vm:b:t:p:c:r:s:i:o:a")) != -1)
     {
         switch (option)
         {
@@ -295,6 +297,10 @@ int main(int argc, char *argv[])
 
                 break;
 
+            case 'a':
+                random_thread_sched = true;
+                break;
+
             case '?':
                 usage();
                 return 1;
@@ -307,6 +313,8 @@ int main(int argc, char *argv[])
         usage();
         return 1;
     }
+
+    seed_random(current_time_us());
 
     // Don't randomize memory for cosimulation mode, because
     // memory is checked against the hardware model to ensure a match
@@ -330,6 +338,9 @@ int main(int argc, char *argv[])
             return 1;
     }
 
+    if (random_thread_sched)
+        enable_random_thread_sched(proc);
+
     switch (mode)
     {
         case MODE_NORMAL:
@@ -339,7 +350,7 @@ int main(int argc, char *argv[])
             dbg_set_stop_on_fault(proc, false);
             if (enable_fb_window)
             {
-                while (execute_instructions(proc, ALL_THREADS, screen_refresh_rate))
+                while (execute_instructions(proc, screen_refresh_rate))
                 {
                     update_frame_buffer(proc);
                     poll_fb_window_event();
@@ -348,7 +359,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                while (execute_instructions(proc, ALL_THREADS, 1000000))
+                while (execute_instructions(proc, 1000000))
                     check_interrupt_pipe(proc);
             }
 
